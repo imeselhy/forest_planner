@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<title>R2 Forest Navigator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --bg:        #0a0e0a;
+    --panel:     #0f160f;
+    --border:    #1a2e1a;
+    --green-dim: #1a3a1a;
+    --green:     #2d7a2d;
+    --green-hi:  #4caf50;
+    --green-glow:#6fcf6f;
+    --yellow:    #c8b400;
+    --yellow-hi: #ffe600;
+    --red:       #c0392b;
+    --red-hi:    #ff4444;
+    --blue:      #1565c0;
+    --blue-hi:   #42a5f5;
+    --text:      #c8e6c9;
+    --text-dim:  #558b5a;
+    --r1-color:  #1565c0;
+    --r1-hi:     #42a5f5;
+    --r2-color:  #2d7a2d;
+    --r2-hi:     #4caf50;
+    --fk-color:  #7b1fa2;
+    --fk-hi:     #ce93d8;
+    --empty-color: #1a2a1a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,255,0,0.015) 2px,
+      rgba(0,255,0,0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--panel);
+    position: relative;
+    overflow: hidden;
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--green-hi), transparent);
+    animation: scanH 3s linear infinite;
+  }
+  @keyframes scanH { from{transform:translateX(-100%)} to{transform:translateX(100%)} }
+
+  .logo {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: clamp(16px, 4vw, 22px);
+    color: var(--green-hi);
+    text-shadow: 0 0 20px var(--green-hi), 0 0 40px var(--green);
+    letter-spacing: 2px;
+  }
+  .logo span { color: var(--yellow-hi); text-shadow: 0 0 20px var(--yellow-hi); }
+
+  .status-bar {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green-hi);
+    box-shadow: 0 0 6px var(--green-hi);
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  /* ── Main layout ── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0;
+    padding: 24px;
+    gap: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; padding: 12px; gap: 16px; }
+  }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    position: relative;
+  }
+  .panel-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-title::before { content: '// '; color: var(--green); }
+
+  /* ── Grid ── */
+  #grid-panel { display: flex; flex-direction: column; align-items: center; }
+
+  .grid-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--green-hi);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .grid-label::before, .grid-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--green-dim);
+  }
+
+  .forest-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .block {
+    aspect-ratio: 1;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    position: relative;
+    transition: all 0.15s ease;
+    background: var(--empty-color);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 80px;
+  }
+  .block:hover { transform: scale(1.03); }
+  .block:active { transform: scale(0.97); }
+
+  .block-num {
+    position: absolute;
+    top: 4px; left: 6px;
+    font-size: 9px;
+    color: var(--text-dim);
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .block-icon {
+    font-size: 22px;
+    line-height: 1;
+    transition: all 0.15s;
+  }
+  .block-label {
+    font-size: 9px;
+    letter-spacing: 1px;
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+  }
+
+  /* Box type colors */
+  .box-empty  { background: var(--empty-color); border-color: var(--border); }
+  .box-r1     { background: #0a1a2e; border-color: var(--r1-color);
+                box-shadow: inset 0 0 12px rgba(21,101,192,0.3); }
+  .box-r1 .block-label { color: var(--r1-hi); }
+  .box-r2     { background: #0a1a0a; border-color: var(--r2-color);
+                box-shadow: inset 0 0 12px rgba(45,122,45,0.4); }
+  .box-r2 .block-label { color: var(--r2-hi); }
+  .box-fake   { background: #1a0a1a; border-color: var(--fk-color);
+                box-shadow: inset 0 0 12px rgba(123,31,162,0.4); }
+  .box-fake .block-label { color: var(--fk-hi); }
+
+  /* Path highlighting */
+  .block.on-path {
+    border-color: var(--yellow-hi) !important;
+    box-shadow: 0 0 16px rgba(255,230,0,0.5), inset 0 0 8px rgba(255,230,0,0.1) !important;
+    animation: pathPulse 1.5s ease-in-out infinite;
+  }
+  .block.entry-block {
+    border-color: var(--green-glow) !important;
+    box-shadow: 0 0 20px rgba(111,207,111,0.6), inset 0 0 10px rgba(111,207,111,0.1) !important;
+  }
+  .block.exit-block {
+    border-color: var(--yellow-hi) !important;
+    box-shadow: 0 0 20px rgba(255,230,0,0.6) !important;
+  }
+  .block.pickup-block {
+    border-color: var(--green-hi) !important;
+  }
+  @keyframes pathPulse {
+    0%,100% { box-shadow: 0 0 16px rgba(255,230,0,0.5), inset 0 0 8px rgba(255,230,0,0.1); }
+    50%      { box-shadow: 0 0 28px rgba(255,230,0,0.8), inset 0 0 14px rgba(255,230,0,0.2); }
+  }
+
+  .step-num {
+    position: absolute;
+    top: 4px; right: 6px;
+    font-size: 10px;
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    color: var(--yellow-hi);
+    text-shadow: 0 0 6px var(--yellow-hi);
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+    justify-content: center;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+  .legend-item:hover { border-color: var(--text-dim); color: var(--text); }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    border: 1px solid;
+  }
+
+  /* ── Controls ── */
+  #controls-panel { min-width: 180px; }
+
+  .type-selector { margin-bottom: 20px; }
+  .type-btn {
+    width: 100%;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-dim);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.15s;
+    text-align: left;
+  }
+  .type-btn:hover { border-color: var(--text-dim); color: var(--text); }
+  .type-btn.active { color: var(--text); }
+  .type-btn.active.btn-empty  { border-color: var(--text-dim); background: #111; }
+  .type-btn.active.btn-r1     { border-color: var(--r1-hi); background: #0a1525;
+                                 box-shadow: 0 0 8px rgba(66,165,245,0.3); color: var(--r1-hi); }
+  .type-btn.active.btn-r2     { border-color: var(--r2-hi); background: #0a1a0a;
+                                 box-shadow: 0 0 8px rgba(76,175,80,0.3); color: var(--r2-hi); }
+  .type-btn.active.btn-fake   { border-color: var(--fk-hi); background: #1a0f1a;
+                                 box-shadow: 0 0 8px rgba(206,147,216,0.3); color: var(--fk-hi); }
+  .btn-icon { font-size: 16px; }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 16px 0;
+  }
+
+  .action-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 3px;
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  .btn-plan {
+    background: var(--green);
+    color: #000;
+    box-shadow: 0 0 16px rgba(45,122,45,0.5);
+  }
+  .btn-plan:hover {
+    background: var(--green-hi);
+    box-shadow: 0 0 24px rgba(76,175,80,0.7);
+    transform: translateY(-1px);
+  }
+  .btn-plan:active { transform: translateY(0); }
+  .btn-reset {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .btn-reset:hover { border-color: var(--red-hi); color: var(--red-hi); }
+
+  .constraint-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px;
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.7;
+    margin-top: 12px;
+  }
+  .constraint-box .ok   { color: var(--green-hi); }
+  .constraint-box .warn { color: var(--yellow-hi); }
+  .constraint-box .err  { color: var(--red-hi); }
+
+  /* ── Results ── */
+  #results-panel { min-width: 260px; }
+
+  .no-result {
+    color: var(--text-dim);
+    font-size: 11px;
+    text-align: center;
+    padding: 40px 0;
+    line-height: 2;
+  }
+  .no-result .big { font-size: 32px; display: block; margin-bottom: 8px; }
+
+  .result-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .result-cost {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: 28px;
+    color: var(--green-hi);
+    text-shadow: 0 0 16px var(--green-hi);
+  }
+  .result-label { font-size: 10px; color: var(--text-dim); letter-spacing: 2px; }
+
+  .step-list { display: flex; flex-direction: column; gap: 4px; }
+
+  .step-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 8px 10px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    font-size: 11px;
+    transition: all 0.15s;
+    animation: fadeIn 0.3s ease both;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
+
+  .step-item.pre-entry { border-color: var(--green-dim); background: rgba(45,122,45,0.1); }
+  .step-item.move      { border-color: var(--border); background: rgba(255,255,255,0.02); }
+  .step-item.pickup    { border-color: var(--green-dim); background: rgba(45,122,45,0.08); }
+  .step-item.goal      { border-color: var(--yellow); background: rgba(200,180,0,0.1); }
+
+  .step-badge {
+    min-width: 22px; height: 22px;
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .badge-pre   { background: var(--green-dim); color: var(--green-hi); }
+  .badge-move  { background: #1a2a1a; color: var(--text-dim); }
+  .badge-pick  { background: rgba(45,122,45,0.3); color: var(--green-hi); }
+  .badge-goal  { background: rgba(200,180,0,0.3); color: var(--yellow-hi); }
+
+  .step-content { flex: 1; line-height: 1.5; }
+  .step-content strong { color: var(--text); }
+  .step-tag {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 2px;
+    font-size: 9px;
+    margin-left: 4px;
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+  }
+  .tag-auto  { background: rgba(45,122,45,0.3); color: var(--green-hi); }
+  .tag-r1    { background: rgba(21,101,192,0.3); color: var(--r1-hi); }
+  .tag-rot   { background: rgba(200,180,0,0.2); color: var(--yellow); }
+  .tag-ht    { background: rgba(80,160,200,0.18); color: #7ec8e3; }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 16px;
+  }
+  .metric {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 8px 10px;
+    text-align: center;
+  }
+  .metric-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--green-hi);
+  }
+  .metric-lbl { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; margin-top: 2px; }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--panel);
+    border: 1px solid var(--green);
+    border-radius: 4px;
+    padding: 10px 20px;
+    font-size: 12px;
+    color: var(--green-hi);
+    transition: transform 0.3s ease;
+    z-index: 1000;
+    white-space: nowrap;
+    box-shadow: 0 0 24px rgba(45,122,45,0.4);
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.error { border-color: var(--red-hi); color: var(--red-hi); box-shadow: 0 0 24px rgba(192,57,43,0.4); }
+
+  /* ── Mobile adjustments ── */
+  @media (max-width: 600px) {
+    .block { min-height: 70px; }
+    .block-icon { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">R2 <span>FOREST</span> NAV</div>
+  <div style="font-size:10px;color:var(--text-dim);letter-spacing:1px;">PATH PLANNER v2.0</div>
+  <div class="status-bar">
+    <div class="status-dot"></div>
+    <span>SYSTEM ONLINE</span>
+  </div>
+</header>
+
+<main>
+  <!-- Left: Controls -->
+  <div class="panel" id="controls-panel">
+    <div class="panel-title">Brush</div>
+
+    <div class="type-selector">
+      <button class="type-btn btn-empty active" data-type="0" onclick="selectBrush(0,this)">
+        <span class="btn-icon">⬜</span> EMPTY
+      </button>
+      <button class="type-btn btn-r1" data-type="1" onclick="selectBrush(1,this)">
+        <span class="btn-icon">🟦</span> R1 BOX
+      </button>
+      <button class="type-btn btn-r2" data-type="2" onclick="selectBrush(2,this)">
+        <span class="btn-icon">🟩</span> R2 BOX
+      </button>
+      <button class="type-btn btn-fake" data-type="3" onclick="selectBrush(3,this)">
+        <span class="btn-icon">🟪</span> FAKE BOX
+      </button>
+    </div>
+
+    <div class="divider"></div>
+    <div class="panel-title">Mission Config</div>
+
+    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+      <label style="font-size:10px;color:var(--text-dim);white-space:nowrap;width:80px;">KFS TOTAL</label>
+      <input id="kfs-total" type="number" min="1" max="7" value="3"
+             style="flex:1;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--green-hi);font-family:'Share Tech Mono',monospace;font-size:13px;font-weight:bold;outline:none;text-align:center;"
+             onfocus="this.style.borderColor='var(--green-hi)'" onblur="this.style.borderColor='var(--border)'"
+             oninput="onKfsInput()" onchange="onKfsCommit()"/>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+      <label style="font-size:10px;color:var(--text-dim);white-space:nowrap;width:80px;">KFS STORED</label>
+      <input id="kfs-stored" type="number" min="0" max="6" value="0"
+             style="flex:1;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--yellow-hi);font-family:'Share Tech Mono',monospace;font-size:13px;font-weight:bold;outline:none;text-align:center;"
+             onfocus="this.style.borderColor='var(--green-hi)'" onblur="this.style.borderColor='var(--border)'"
+             oninput="onKfsInput()" onchange="onKfsCommit()"/>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:3px;cursor:pointer;" onclick="document.getElementById('retry-flag').click()">
+      <input id="retry-flag" type="checkbox"
+             style="width:16px;height:16px;cursor:pointer;accent-color:var(--yellow-hi);"
+             onclick="event.stopPropagation()"/>
+      <span style="font-size:11px;color:var(--text-dim);letter-spacing:1px;">RETRY FLAG</span>
+      <span style="font-size:9px;color:var(--text-dim);margin-left:auto;">operator signal</span>
+    </div>
+
+    <div class="divider"></div>
+    <div class="panel-title">Actions</div>
+
+    <button class="action-btn btn-plan" onclick="runPlanner()">▶ PLAN PATH</button>
+    <button class="action-btn btn-reset" onclick="resetGrid()">↺ RESET GRID</button>
+
+    <div class="divider"></div>
+    <div class="panel-title">ROS2 Robot</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;">
+      <input id="robot-ip" type="text" placeholder="Robot IP  e.g. 192.168.1.50"
+             style="flex:1;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:11px;outline:none;"
+             onfocus="this.style.borderColor='var(--green-hi)'" onblur="this.style.borderColor='var(--border)'"/>
+    </div>
+    <button id="send-btn" class="action-btn"
+            style="background:var(--blue);color:#fff;box-shadow:0 0 12px rgba(21,101,192,0.4);"
+            onclick="sendToRobot()">▶ SEND TO ROBOT</button>
+
+    <div class="constraint-box" id="constraint-box">
+      <div id="c-kfs">KFS: <span class="ok">0</span> stored · need <span class="ok">3</span> more</div>
+      <div id="c-r2count">R2 on grid: <span class="ok">0</span> (need ≥3)</div>
+      <div id="c-r1count">R1 boxes: <span class="ok">0</span>/3</div>
+      <div id="c-fkcount">Fake boxes: <span class="ok">0</span>/1</div>
+      <div id="c-entry">Entry R2: <span class="ok">—</span></div>
+    </div>
+  </div>
+
+  <!-- Center: Grid -->
+  <div class="panel" id="grid-panel">
+    <div class="panel-title">Forest Grid</div>
+
+    <div class="grid-label">ENTRY ↓</div>
+    <div class="forest-grid" id="forest-grid"></div>
+    <div class="grid-label" style="margin-top:12px;">↓ EXIT</div>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#1a2a1a;border-color:#2a3a2a"></div>EMPTY</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#0a1a2e;border-color:var(--r1-color)"></div>R1</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#0a1a0a;border-color:var(--r2-color)"></div>R2</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1a0a1a;border-color:var(--fk-color)"></div>FAKE</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(255,230,0,0.2);border-color:var(--yellow-hi)"></div>PATH</div>
+    </div>
+  </div>
+
+  <!-- Right: Results -->
+  <div class="panel" id="results-panel">
+    <div class="panel-title">Optimal Path</div>
+    <div id="result-content">
+      <div class="no-result">
+        <span class="big">🌲</span>
+        Set box locations<br/>then press<br/>PLAN PATH
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ============================================================
+// PLANNER — direct port of forest_navigator v2 C++ logic
+// ============================================================
+
+const ROWS = 4, COLS = 3, NUM_BLOCKS = 12;
+const BOX_EMPTY = 0, BOX_R1 = 1, BOX_R2 = 2, BOX_FAKE = 3;
+
+// KFS configuration — set by UI inputs
+let kfsTotal  = 3;   // total KFS to collect across the match
+let kfsStored = 0;   // KFS already stored before this run
+function kfsNeeded() { return kfsTotal - kfsStored; }  // how many to pick up this run
+
+// Block height table (mm, 1-indexed: index 0 unused)
+// B1=400 B2=200 B3=400 B4=200 B5=400 B6=600
+// B7=400 B8=600 B9=400 B10=200 B11=400 B12=200
+const BLOCK_HEIGHT_MM = [0, 400,200,400,200,400,600, 400,600,400,200,400,200];
+
+function heightDeltaMm(curBlock1, tgtBlock1) {
+  return BLOCK_HEIGHT_MM[tgtBlock1] - BLOCK_HEIGHT_MM[curBlock1];
+}
+function heightDeltaEnc(curBlock1, tgtBlock1) {
+  const d = heightDeltaMm(curBlock1, tgtBlock1);
+  return d === -400 ? 0 : d === -200 ? 1 : d === 0 ? 2 : d === 200 ? 3 : 4;
+}
+// Format as a display string e.g. "+200mm" or "−400mm"
+function heightDeltaStr(curBlock1, tgtBlock1) {
+  const d = heightDeltaMm(curBlock1, tgtBlock1);
+  if (d === 0) return '';
+  return (d > 0 ? '+' : '−') + Math.abs(d) + 'mm';
+}
+// PRE_ENTRY: robot is on the ground (0mm), so delta = absolute target block height
+function preEntryHeightDeltaMm(tgtBlock1)  { return BLOCK_HEIGHT_MM[tgtBlock1]; }
+function preEntryHeightDeltaEnc(tgtBlock1) {
+  const d = preEntryHeightDeltaMm(tgtBlock1);
+  return d === 200 ? 3 : d === 400 ? 4 : d === 600 ? 5 : 2; // 5 reserved but usable
+}
+function preEntryHeightDeltaStr(tgtBlock1) {
+  return '+' + preEntryHeightDeltaMm(tgtBlock1) + 'mm';
+}
+const DIR_DOWN=0, DIR_RIGHT=1, DIR_UP=2, DIR_LEFT=3;
+const DIR_NAMES = ['DOWN','RIGHT','UP','LEFT'];
+const DIR_ARROWS = ['↓','→','↑','←'];
+
+const C_MOVE       = 1;
+const C_TURN_90    = 1;
+const C_TURN_180   = 2;
+const C_BACK_PEN   = 3;
+const C_PICKUP_SAME= 0;
+const C_PICKUP_ROT = 1;
+const C_R1_WAIT    = 3;
+const C_INF        = 999999;
+
+function blockIdx(r,c){ return r*COLS+c; }
+function rowOf(i){ return Math.floor(i/COLS); }
+function colOf(i){ return i%COLS; }
+
+function stepBlock(idx, dir){
+  let r=rowOf(idx), c=colOf(idx);
+  if(dir===DIR_DOWN)  r++;
+  else if(dir===DIR_UP)    r--;
+  else if(dir===DIR_RIGHT) c++;
+  else if(dir===DIR_LEFT)  c--;
+  if(r<0||r>=ROWS||c<0||c>=COLS) return -1;
+  return blockIdx(r,c);
+}
+
+function rotCost(cur, tgt){
+  const d=((tgt-cur)+4)%4;
+  return d===0 ? 0 : d===2 ? C_TURN_180 : C_TURN_90;
+}
+
+function moveCost(cf, dir){
+  return rotCost(cf,dir) + C_MOVE + (dir===DIR_UP ? C_BACK_PEN : 0);
+}
+
+// Pack state into a number: block(4b) | collected(3b) | facing(2b) | picked(4b)
+// collected widened to 3 bits to support kfsNeeded up to 7
+function packState(block, collected, facing, picked){
+  return (block&0xF) | ((collected&0x7)<<4) | ((facing&0x3)<<7) | ((picked&0xF)<<9);
+}
+function unpackState(v){
+  return {
+    block:     v & 0xF,
+    collected: (v>>4) & 0x7,
+    facing:    (v>>7) & 0x3,
+    picked:    (v>>9) & 0xF
+  };
+}
+
+function heuristic(block, collected){
+  const remaining = Math.max(0, kfsNeeded() - collected);
+  return (ROWS-1-rowOf(block)) + remaining*2;
+}
+
+// Build helper arrays from boxes
+function buildMap(boxes){
+  const r2Blocks = [];
+  for(let i=0;i<NUM_BLOCKS;i++)
+    if(boxes[i]===BOX_R2) r2Blocks.push(i);
+  return { boxes, r2Blocks };
+
+}
+
+function r2BitOf(map, block){
+  return map.r2Blocks.indexOf(block);
+}
+
+function hasR2(map, block, picked){
+  const bit = r2BitOf(map, block);
+  if(bit<0) return false;
+  return !(picked & (1<<bit));
+}
+
+function canStandOn(map, i, collected, picked){
+  if(map.boxes[i]===BOX_FAKE) return false;
+  // When kfsNeeded=0, all uncollected R2 boxes are impassable (treated like FAKE)
+  if(kfsNeeded() === 0 && hasR2(map,i,picked)) return false;
+  // When still collecting, block standing on R2 only once target is reached
+  if(kfsNeeded() > 0 && hasR2(map,i,picked) && collected>=kfsNeeded()) return false;
+  return true;
+}
+
+// A* planner
+function plan(map, entry, startFacing, initPicked, initCollected){
+  if(rowOf(entry)!==0) return null;
+
+  // Simple min-heap
+  const heap = [];
+  function heapPush(node){
+    heap.push(node);
+    let i=heap.length-1;
+    while(i>0){
+      const p=Math.floor((i-1)/2);
+      if(heap[p].f<=heap[i].f) break;
+      [heap[p],heap[i]]=[heap[i],heap[p]]; i=p;
+    }
+  }
+  function heapPop(){
+    const top=heap[0];
+    const last=heap.pop();
+    if(heap.length>0){
+      heap[0]=last; let i=0;
+      while(true){
+        let s=i, l=2*i+1, r=2*i+2;
+        if(l<heap.length&&heap[l].f<heap[s].f) s=l;
+        if(r<heap.length&&heap[r].f<heap[s].f) s=r;
+        if(s===i) break;
+        [heap[i],heap[s]]=[heap[s],heap[i]]; i=s;
+      }
+    }
+    return top;
+  }
+
+  const gScore = new Map();
+  const parent = new Map();
+  const parentAction = new Map();
+
+  // Handle auto-pickup on entry block
+  let startPicked = initPicked, startCollected = initCollected;
+  if(hasR2(map, entry, startPicked) && startCollected < kfsNeeded()){
+    const bit = r2BitOf(map, entry);
+    startPicked |= (1<<bit);
+    startCollected++;
+  }
+
+  const sk = packState(entry, startCollected, DIR_DOWN, startPicked);
+  gScore.set(sk, 0);
+  heapPush({f: heuristic(entry, startCollected), g:0, key:sk});
+
+  while(heap.length > 0){
+    const cur = heapPop();
+    const g_cur = gScore.get(cur.key);
+    if(g_cur===undefined || cur.g > g_cur) continue;
+
+    const cs = unpackState(cur.key);
+
+    // Goal check
+    if(cs.collected >= kfsNeeded() && rowOf(cs.block) === ROWS-1){
+      // Reconstruct path
+      const keys = [];
+      let c = cur.key;
+      while(c !== sk){ keys.push(c); c=parent.get(c); }
+      keys.push(sk);
+      keys.reverse();
+      return {
+        found: true,
+        totalCost: cur.g,
+        states: keys.map(unpackState),
+        actions: keys.slice(1).map(k=>parentAction.get(k))
+      };
+    }
+
+    // PICKUP from adjacent blocks
+    if(cs.collected < kfsNeeded()){
+      for(let d=0;d<4;d++){
+        const adj = stepBlock(cs.block, d);
+        if(adj<0 || !hasR2(map,adj,cs.picked)) continue;
+        const bit = r2BitOf(map, adj);
+        const pc = (d===cs.facing) ? C_PICKUP_SAME : rotCost(cs.facing,d)+C_PICKUP_ROT;
+        const ns_picked = cs.picked|(1<<bit);
+        const nk = packState(cs.block, cs.collected+1, d, ns_picked);
+        const ng = cur.g + pc;
+        if(!gScore.has(nk) || ng < gScore.get(nk)){
+          gScore.set(nk, ng);
+          parent.set(nk, cur.key);
+          parentAction.set(nk, {type:'pickup', direction:d, targetBlock:adj});
+          heapPush({f:ng+heuristic(cs.block,cs.collected+1), g:ng, key:nk});
+        }
+      }
+    }
+
+    // MOVE to adjacent block
+    for(let d=0;d<4;d++){
+      const next = stepBlock(cs.block, d);
+      if(next<0 || !canStandOn(map,next,cs.collected,cs.picked)) continue;
+      let mc = moveCost(cs.facing, d);
+      if(map.boxes[next]===BOX_R1) mc += C_R1_WAIT;
+
+      let ns_collected = cs.collected;
+      let ns_picked = cs.picked;
+      if(hasR2(map,next,cs.picked) && ns_collected < kfsNeeded()){
+        const bit = r2BitOf(map, next);
+        ns_collected++;
+        ns_picked |= (1<<bit);
+      }
+
+      const nk = packState(next, ns_collected, d, ns_picked);
+      const ng = cur.g + mc;
+      if(!gScore.has(nk) || ng < gScore.get(nk)){
+        gScore.set(nk, ng);
+        parent.set(nk, cur.key);
+        parentAction.set(nk, {type:'move', direction:d, targetBlock:next});
+        heapPush({f:ng+heuristic(next,ns_collected), g:ng, key:nk});
+      }
+    }
+  }
+  return null;
+}
+
+// Generate all valid entry states (pre-entry pickup combinations)
+function generateEntryStates(map){
+  const entryR2 = [];
+  for(let c=0;c<COLS;c++){
+    const b=blockIdx(0,c);
+    if(map.boxes[b]===BOX_R2) entryR2.push(b);
+  }
+  // mustPick: robot must pick at least one KFS from the entry row before entering
+  // ONLY if: there are R2 boxes on the entry row AND the robot has no KFS stored yet
+  // If kfsStored > 0, the robot already proved it can collect — skip rule entirely
+  // If kfsNeeded() = 0, there's nothing to collect anyway — no pre-entry needed
+  const mustPick = entryR2.length > 0 && kfsStored === 0 && kfsNeeded() > 0;
+  const subsets = 1<<entryR2.length;
+  const results = [];
+
+  for(let mask=0; mask<subsets; mask++){
+    if(mustPick && mask===0) continue;
+    let picked=0, collected=0;
+    for(let i=0;i<entryR2.length;i++){
+      if(mask&(1<<i)){
+        const bit=r2BitOf(map,entryR2[i]);
+        picked|=(1<<bit);
+        collected++;
+      }
+    }
+    if(collected > kfsNeeded()) continue;
+    for(let col=0;col<COLS;col++){
+      const eb=blockIdx(0,col);
+      if(map.boxes[eb]===BOX_FAKE) continue;
+      results.push({entryBlock:eb, initPicked:picked, initCollected:collected});
+    }
+  }
+
+  return results;
+}
+
+// Run full planner over all entry states
+function runFullPlanner(boxes){
+  const map = buildMap(boxes);
+  const entries = generateEntryStates(map);
+  let best=null, bestEntry=-1, bestES=null;
+
+  for(const es of entries){
+    const res = plan(map, es.entryBlock, DIR_DOWN, es.initPicked, es.initCollected);
+    if(res && (!best || res.totalCost < best.totalCost)){
+      best=res; bestEntry=es.entryBlock; bestES=es;
+    }
+  }
+  return { result:best, entryBlock:bestEntry, es:bestES, map };
+}
+
+// ============================================================
+// UI STATE
+// ============================================================
+let boxes = new Array(NUM_BLOCKS).fill(BOX_EMPTY);
+let currentBrush = 0;
+let lastPlanResult = null;
+
+const BOX_ICONS  = ['·', 'R1', 'R2', '✕'];
+const BOX_LABELS = ['EMPTY','R1','R2','FAKE'];
+const BOX_CLASSES= ['box-empty','box-r1','box-r2','box-fake'];
+const BOX_EMOJIS = ['⬜','🟦','🟩','🟪'];
+
+// Build grid
+function buildGrid(){
+  const grid = document.getElementById('forest-grid');
+  grid.innerHTML='';
+  for(let i=0;i<NUM_BLOCKS;i++){
+    const div=document.createElement('div');
+    div.className='block box-empty';
+    div.id=`block-${i}`;
+    div.innerHTML=`
+      <span class="block-num">${i+1}</span>
+      <span class="block-icon" id="icon-${i}">·</span>
+      <span class="block-label" id="label-${i}"></span>
+    `;
+    div.onclick=()=>paintBlock(i);
+    div.addEventListener('touchstart', e=>{ e.preventDefault(); paintBlock(i); },{passive:false});
+    grid.appendChild(div);
+  }
+}
+
+function paintBlock(i){
+  // Only EMPTY brush can remove a box
+  if(currentBrush !== BOX_EMPTY && boxes[i] !== BOX_EMPTY){
+    if(boxes[i] === currentBrush) return; // clicking same type — no-op
+    return; // different type — silently ignore, don't toast
+  }
+
+  // Constraint: R1 only on outer blocks
+  if(currentBrush===BOX_R1){
+    const outer=[0,1,2,3,5,6,8,9,10,11];
+    if(!outer.includes(i)){
+      showToast('R1 boxes can only be placed on outer blocks!', true);
+      return;
+    }
+  }
+  // Constraint limits
+  const counts=[0,0,0,0];
+  for(let j=0;j<NUM_BLOCKS;j++) if(j!==i) counts[boxes[j]]++;
+  if(currentBrush===BOX_R2 && boxes[i]!==BOX_R2 && counts[BOX_R2]>=4){
+    showToast('Maximum 4 R2 boxes allowed on the grid!', true); return;
+  }
+  if(currentBrush===BOX_R1 && boxes[i]!==BOX_R1 && counts[BOX_R1]>=3){
+    showToast('Maximum 3 R1 boxes allowed!', true); return;
+  }
+  if(currentBrush===BOX_FAKE && boxes[i]!==BOX_FAKE && counts[BOX_FAKE]>=1){
+    showToast('Maximum 1 fake box allowed!', true); return;
+  }
+  if(currentBrush===BOX_FAKE && i < 3){
+    showToast('FAKE box cannot be placed on entry blocks (B1, B2, B3)!', true); return;
+  }
+
+  boxes[i] = currentBrush;
+  updateBlockVisual(i);
+  // Never clear the path — it stays visible until a new plan runs or grid is reset
+  updateConstraints();
+}
+
+function updateBlockVisual(i, stepNum=null, isEntry=false, isExit=false){
+  const el=document.getElementById(`block-${i}`);
+  if(!el) return;
+  // Remove all box classes
+  el.classList.remove('box-empty','box-r1','box-r2','box-fake');
+  el.classList.add(BOX_CLASSES[boxes[i]]);
+
+  document.getElementById(`icon-${i}`).textContent = BOX_EMOJIS[boxes[i]];
+  document.getElementById(`label-${i}`).textContent = boxes[i]===BOX_EMPTY ? '' : BOX_LABELS[boxes[i]];
+
+  // Step number overlay
+  const existing = el.querySelector('.step-num');
+  if(existing) existing.remove();
+  if(stepNum!==null){
+    const sn=document.createElement('span');
+    sn.className='step-num';
+    sn.textContent=stepNum;
+    el.appendChild(sn);
+  }
+}
+
+function clearPathHighlights(){
+  for(let i=0;i<NUM_BLOCKS;i++){
+    const el=document.getElementById(`block-${i}`);
+    if(el){
+      el.classList.remove('on-path','entry-block','exit-block','pickup-block');
+      const sn=el.querySelector('.step-num');
+      if(sn) sn.remove();
+    }
+  }
+}
+
+function selectBrush(type, btn){
+  currentBrush=type;
+  document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function resetGrid(){
+  boxes.fill(BOX_EMPTY);
+  for(let i=0;i<NUM_BLOCKS;i++) updateBlockVisual(i);
+  clearPathHighlights();
+  updateConstraints();
+  document.getElementById('result-content').innerHTML=`
+    <div class="no-result">
+      <span class="big">🌲</span>
+      Set box locations<br/>then press<br/>PLAN PATH
+    </div>`;
+  lastPlanResult=null;
+}
+
+function updateConstraints(){
+  const counts=[0,0,0,0];
+  for(let b of boxes) counts[b]++;
+  const entryR2 = [0,1,2].filter(c=>boxes[blockIdx(0,c)]===BOX_R2).length;
+  const needed = kfsNeeded();
+
+  const r2c=counts[BOX_R2], r1c=counts[BOX_R1], fkc=counts[BOX_FAKE];
+  document.getElementById('c-r2count').innerHTML=
+    needed > 0
+      ? `R2 on grid: <span class="${r2c<needed?'err':(r2c>4?'warn':'ok')}">${r2c}</span> (need ≥${needed})`
+      : `R2 on grid: <span class="ok">${r2c}</span> (none needed)`;
+  document.getElementById('c-r1count').innerHTML=
+    `R1 boxes: <span class="${r1c>3?'err':'ok'}">${r1c}</span>/3`;
+  document.getElementById('c-fkcount').innerHTML=
+    `Fake boxes: <span class="${fkc>1?'err':'ok'}">${fkc}</span>/1`;
+  // Entry R2 warning only applies when kfsStored=0 and kfsNeeded>0
+  const entryWarn = entryR2 > 0 && kfsStored === 0 && needed > 0;
+  document.getElementById('c-entry').innerHTML=
+    `Entry R2: <span class="${entryWarn?'warn':'ok'}">${entryWarn?'⚠ must pick 1 from entry':'—'}</span>`;
+  document.getElementById('c-kfs').innerHTML=
+    needed <= 0
+      ? `KFS: <span class="ok">${kfsStored}</span> stored · <span class="ok">just exit</span>`
+      : `KFS: <span class="ok">${kfsStored}</span> stored · need <span class="ok">${needed}</span> more`;
+}
+
+function runPlanner(){
+  const needed = kfsNeeded();
+  if(needed > 7){
+    showToast(`KFS needed (${needed}) exceeds max of 7!`, true);
+    return;
+  }
+
+  // Validate grid
+  const counts=[0,0,0,0];
+  for(let b of boxes) counts[b]++;
+  if(needed > 0 && counts[BOX_R2] < needed){
+    showToast(`Need at least ${needed} R2 boxes on the grid (have ${counts[BOX_R2]})!`, true);
+    return;
+  }
+  if(counts[BOX_R1]>3){ showToast('Too many R1 boxes (max 3)!', true); return; }
+  if(counts[BOX_FAKE]>1){ showToast('Too many fake boxes (max 1)!', true); return; }
+
+  const {result, entryBlock, es, map} = runFullPlanner(boxes);
+
+  if(!result){
+    document.getElementById('result-content').innerHTML=`
+      <div class="no-result">
+        <span class="big">⚠</span>
+        No valid path found.<br/>
+        Check for blocked corridors<br/>or fake box placement.
+      </div>`;
+    showToast('No valid path found!', true);
+    return;
+  }
+
+  lastPlanResult={result, entryBlock, es, map};
+  renderResult(result, entryBlock, es, map);
+  showToast(`Path found! Cost: ${result.totalCost}`);
+}
+
+// ============================================================
+// ROS2 SEND — builds JSON payload and POSTs to the C++ node
+// ============================================================
+
+// Build the JSON payload matching what path_receiver_node.cpp expects
+function buildPayload(result, entryBlock, es, map) {
+  const DIR_NAMES = ['DOWN','RIGHT','UP','LEFT'];
+  const needed = kfsNeeded();
+
+  // Pre-entry pickup blocks (1-indexed)
+  const preEntryPickups = [];
+  for(let i = 0; i < map.r2Blocks.length; i++) {
+    if(es.initPicked & (1<<i))
+      preEntryPickups.push(map.r2Blocks[i] + 1);
+  }
+
+  // Exit block = last state's block (1-indexed)
+  const exitBlock = result.states[result.states.length - 1].block + 1;
+
+  // Retry flag from checkbox
+  const retry = document.getElementById('retry-flag')?.checked || false;
+
+  // Build steps array
+  const steps = [];
+
+  // Pre-entry pickups as ACT_PRE_ENTRY steps
+  preEntryPickups.forEach((blk, i) => {
+    steps.push({
+      action_type:      2,           // ACT_PRE_ENTRY
+      current_block:    0,
+      target_block:     blk,
+      direction:        0,
+      collected_after:  i + 1,
+      requires_r1_clear: false,
+      auto_pickup:      false,
+      height_delta_enc: preEntryHeightDeltaEnc(blk),
+      height_delta_mm:  preEntryHeightDeltaMm(blk)
+    });
+  });
+
+  // In-forest steps
+  result.states.forEach((s, i) => {
+    if(i === 0) {
+      // ENTER step: robot moves from outside (0) onto the entry block
+      const entryHeightDelta = preEntryHeightDeltaMm(entryBlock + 1);
+      steps.push({
+        action_type:      0,             // MOVE
+        current_block:    0,             // outside the grid
+        target_block:     entryBlock + 1,
+        direction:        0,             // DOWN (always entering from above)
+        collected_after:  s.collected,
+        requires_r1_clear: false,
+        auto_pickup:      s.collected > es.initCollected, // auto-pickup if entry block has R2
+        height_delta_enc: preEntryHeightDeltaEnc(entryBlock + 1),
+        height_delta_mm:  entryHeightDelta
+      });
+      return;
+    }
+    const a = result.actions[i - 1];
+    if(!a) return;
+    const prevState = result.states[i - 1];
+    steps.push({
+      action_type:      a.type === 'pickup' ? 1 : 0,
+      current_block:    prevState.block + 1,
+      target_block:     a.targetBlock + 1,
+      direction:        a.direction,
+      collected_after:  s.collected,
+      requires_r1_clear: map.boxes[a.targetBlock] === BOX_R1,
+      auto_pickup:      (a.type === 'move' && s.collected > prevState.collected),
+      height_delta_enc: heightDeltaEnc(prevState.block + 1, a.targetBlock + 1),
+      height_delta_mm:  heightDeltaMm(prevState.block + 1, a.targetBlock + 1)
+    });
+  });
+
+  return {
+    total_cost:       result.totalCost,
+    entry_block:      entryBlock + 1,
+    exit_block:       exitBlock,
+    kfs_total:        kfsTotal,
+    kfs_stored:       kfsStored,
+    boxes_to_collect: needed,
+    retry:            retry,
+    grid_state:       Array.from(map.boxes),
+    pre_entry_pickups: preEntryPickups,
+    steps:            steps
+  };
+}
+
+async function sendToRobot() {
+  if(!lastPlanResult) {
+    showToast('Plan a path first!', true);
+    return;
+  }
+
+  const robotIp = document.getElementById('robot-ip').value.trim() || 'localhost';
+  const url = `http://${robotIp}:8080/plan`;
+
+  const payload = buildPayload(
+    lastPlanResult.result,
+    lastPlanResult.entryBlock,
+    lastPlanResult.es,
+    lastPlanResult.map
+  );
+
+  // Update button state
+  const btn = document.getElementById('send-btn');
+  btn.textContent = '⏳ SENDING...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(5000)   // 5s timeout
+    });
+
+    if(res.ok) {
+      const data = await res.json();
+      showToast(`✓ Robot received path! ${data.message || ''}`);
+      btn.textContent = '✓ SENT';
+      btn.style.background = 'var(--green)';
+      setTimeout(() => {
+        btn.textContent = '▶ SEND TO ROBOT';
+        btn.style.background = '';
+        btn.disabled = false;
+      }, 3000);
+    } else {
+      const err = await res.json().catch(()=>({message:'Unknown error'}));
+      showToast(`Robot error: ${err.message}`, true);
+      resetSendBtn(btn);
+    }
+  } catch(e) {
+    const msg = e.name === 'TimeoutError'
+      ? 'Timeout — is the robot reachable?'
+      : `Connection failed: ${e.message}`;
+    showToast(msg, true);
+    resetSendBtn(btn);
+  }
+}
+
+function resetSendBtn(btn) {
+  btn.textContent = '▶ SEND TO ROBOT';
+  btn.disabled = false;
+}
+
+function renderResult(result, entryBlock, es, map){
+  clearPathHighlights();
+
+  // Highlight path blocks
+  const visitedBlocks = new Set();
+  result.states.forEach((s,i)=>{
+    visitedBlocks.add(s.block);
+    const el=document.getElementById(`block-${s.block}`);
+    if(!el) return;
+    el.classList.add('on-path');
+    if(i===0) el.classList.add('entry-block');
+    if(i===result.states.length-1) el.classList.add('exit-block');
+
+    const sn=document.createElement('span');
+    sn.className='step-num';
+    sn.textContent=i;
+    el.appendChild(sn);
+  });
+
+  // Highlight pickup source blocks
+  result.actions.forEach(a=>{
+    if(a && a.type==='pickup'){
+      const el=document.getElementById(`block-${a.targetBlock}`);
+      if(el) el.classList.add('pickup-block');
+    }
+  });
+
+  // Build step list HTML
+  const steps=[];
+
+  // Pre-entry pickups
+  if(es.initCollected>0){
+    for(let i=0;i<map.r2Blocks.length;i++){
+      if(es.initPicked&(1<<i)){
+        steps.push(`
+          <div class="step-item pre-entry" style="animation-delay:${steps.length*0.05}s">
+            <div class="step-badge badge-pre">PRE</div>
+            <div class="step-content">
+              <strong>PICKUP</strong> R2 from block ${map.r2Blocks[i]+1}
+              <span class="step-tag tag-auto">PRE-ENTRY</span>
+              <span class="step-tag tag-ht">⬍ ${preEntryHeightDeltaStr(map.r2Blocks[i]+1)}</span>
+            </div>
+          </div>`);
+      }
+    }
+  }
+
+  // In-forest steps
+  result.states.forEach((s,i)=>{
+    if(i===0){
+      steps.push(`
+        <div class="step-item move" style="animation-delay:${steps.length*0.05}s">
+          <div class="step-badge badge-move">${i}</div>
+          <div class="step-content">
+            <strong>ENTER</strong> block ${s.block+1}
+            · facing ${DIR_ARROWS[s.facing]} ${DIR_NAMES[s.facing]}
+            · collected ${s.collected}/${kfsNeeded()}
+          </div>
+        </div>`);
+      return;
+    }
+    const a=result.actions[i-1];
+    if(!a) return;
+
+    if(a.type==='pickup'){
+      const hd = heightDeltaStr(result.states[i-1].block+1, a.targetBlock+1);
+      steps.push(`
+        <div class="step-item pickup" style="animation-delay:${steps.length*0.05}s">
+          <div class="step-badge badge-pick">${i}</div>
+          <div class="step-content">
+            <strong>PICKUP</strong> R2 from block ${a.targetBlock+1}
+            <span class="step-tag tag-rot">ROTATE ${DIR_ARROWS[a.direction]}</span>
+            ${hd ? `<span class="step-tag tag-ht">⬍ ${hd}</span>` : ''}
+            · ${s.collected}/${kfsNeeded()}
+          </div>
+        </div>`);
+    } else {
+      const tags=[];
+      if(map.boxes[a.targetBlock]===BOX_R1)
+        tags.push(`<span class="step-tag tag-r1">R1 WAIT</span>`);
+      const prevState=result.states[i-1];
+      if(s.collected>prevState.collected)
+        tags.push(`<span class="step-tag tag-auto">AUTO-PICKUP</span>`);
+      const hd = heightDeltaStr(prevState.block+1, a.targetBlock+1);
+      if(hd) tags.push(`<span class="step-tag tag-ht">⬍ ${hd}</span>`);
+      const isGoal=(s.collected>=kfsNeeded() && rowOf(s.block)===ROWS-1);
+      steps.push(`
+        <div class="step-item ${isGoal?'goal':'move'}" style="animation-delay:${steps.length*0.05}s">
+          <div class="step-badge ${isGoal?'badge-goal':'badge-move'}">${i}</div>
+          <div class="step-content">
+            <strong>MOVE</strong> ${DIR_ARROWS[a.direction]} to block ${a.targetBlock+1}
+            ${tags.join('')}
+            · ${s.collected}/${kfsNeeded()}
+            ${isGoal?'<span class="step-tag tag-auto">✓ EXIT</span>':''}
+          </div>
+        </div>`);
+    }
+  });
+
+  // Metrics
+  const rotations = result.actions.filter(a=>a&&a.type==='move'&&rotCost(0,a.direction)>0).length;
+  const pickups   = (es.initCollected||0) + result.actions.filter(a=>a&&a.type==='pickup').length +
+                    result.states.filter((s,i)=>i>0&&s.collected>result.states[i-1].collected&&
+                      result.actions[i-1]?.type==='move').length;
+  const moves     = result.actions.filter(a=>a&&a.type==='move').length;
+
+  document.getElementById('result-content').innerHTML=`
+    <div class="result-header">
+      <div class="result-cost">${result.totalCost}</div>
+      <div>
+        <div class="result-label">TOTAL COST</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:2px;">
+          Entry: Block ${entryBlock+1}
+        </div>
+      </div>
+    </div>
+    <div class="step-list">${steps.join('')}</div>
+    <div class="metrics">
+      <div class="metric"><div class="metric-val">${moves}</div><div class="metric-lbl">MOVES</div></div>
+      <div class="metric"><div class="metric-val">${pickups}</div><div class="metric-lbl">PICKUPS</div></div>
+      <div class="metric"><div class="metric-val">${result.states.length-1}</div><div class="metric-lbl">STEPS</div></div>
+      <div class="metric"><div class="metric-val">${entryBlock+1}</div><div class="metric-lbl">ENTRY</div></div>
+    </div>`;
+}
+
+function showToast(msg, isError=false){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.className='show'+(isError?' error':'');
+  clearTimeout(t._timer);
+  t._timer=setTimeout(()=>t.className='',2500);
+}
+
+// oninput: sync globals immediately without rewriting the field (lets user type freely)
+function onKfsInput(){
+  const t = parseInt(document.getElementById('kfs-total').value);
+  const s = parseInt(document.getElementById('kfs-stored').value);
+  if (!isNaN(t)) kfsTotal  = t;
+  if (!isNaN(s)) kfsStored = s;
+  updateConstraints();
+}
+
+// onchange: fires when field loses focus or Enter is pressed — clamp and write back
+function onKfsCommit(){
+  const totalEl  = document.getElementById('kfs-total');
+  const storedEl = document.getElementById('kfs-stored');
+  let t = parseInt(totalEl.value);
+  let s = parseInt(storedEl.value);
+  if (isNaN(t) || t < 1) t = 1;
+  if (t > 7) t = 7;
+  if (isNaN(s) || s < 0) s = 0;
+  if (s > t) s = t;  // stored can equal total (kfsNeeded=0 = just exit, still valid)
+  totalEl.value  = t;
+  storedEl.value = s;
+  kfsTotal  = t;
+  kfsStored = s;
+  updateConstraints();
+}
+
+// Init
+buildGrid();
+updateConstraints();
+
+// Load scenario 1 as default
+const demo=[BOX_R2,BOX_R1,BOX_R2,BOX_R1,BOX_R2,BOX_FAKE,BOX_EMPTY,BOX_EMPTY,BOX_EMPTY,BOX_R1,BOX_R2,BOX_EMPTY];
+demo.forEach((v,i)=>{ boxes[i]=v; updateBlockVisual(i); });
+updateConstraints();
+</script>
+</body>
+</html>
