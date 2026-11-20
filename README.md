@@ -221,16 +221,10 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 | Robot middleware | ROS 2 Humble, `rclcpp`, custom `rosidl` messages, cpp-httplib, nlohmann/json |
 | Embedded | STM32 (C99, HAL), CAN bus, CRC-8/SMBUS |
 
-## Roadmap
-
-- [ ] Transmit packed frames directly via SocketCAN (currently packed and logged)
-- [ ] Unit tests for the CAN codec round-trip (C++ ↔ C)
-- [ ] Launch file + YAML parameter config
-- [ ] Gameplay video / field demo GIF
 
 ## Author
 
 **Ibrahim Meselhy**
-[GitHub](https://github.com/imeselhy) · [LinkedIn](https://www.linkedin.com/in/your-profile)
+[GitHub](https://github.com/imeselhy)
 
 Developed for the R2 robot in ABU Robocon 2026.
